@@ -11,13 +11,14 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	val "github.com/go-playground/validator/v10/non-standard/validators"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/adjust/rmq/v5"
 
 	"github.com/joho/godotenv"
-	models "mkr.cx/3d-label-printing/src/common"
+	models "mkr.cx/3d-printing-label/src/common"
 )
 
 var validate = validator.New()
@@ -51,10 +52,17 @@ func main() {
 
 	hmac_secret := []byte(os.Getenv("HMAC_SECRET"))
 	rmq_url := os.Getenv("RMQ_URL")
+	rmq_password := os.Getenv("RMQ_PASSWORD")
 	rmq_tag := os.Getenv("RMQ_TAG")
 	rmq_queue := os.Getenv("RMQ_QUEUE")
 
-	rmq_con, err := rmq.OpenConnection(rmq_tag, "tcp", rmq_url, 1, nil)
+	redis_client := redis.NewClient(&redis.Options{
+		Addr:     rmq_url,
+		Password: rmq_password,
+		DB:       1,
+	})
+
+	rmq_con, err := rmq.OpenConnectionWithRedisClient(rmq_tag, redis_client, nil)
 	if err != nil {
 		panic(err)
 	}
