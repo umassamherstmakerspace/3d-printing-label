@@ -83,7 +83,7 @@ func main() {
 		return c.SendString("Welcome to the 3D Printing Label Server!")
 	})
 
-	app.Get("/print", func(c *fiber.Ctx) error {
+	app.Post("/print", func(c *fiber.Ctx) error {
 		var request struct {
 			Data      string `json:"data" validate:"required,notblank"`
 			Signature string `json:"signature" validate:"required,notblank"`
