@@ -8,6 +8,7 @@ type Print struct {
 	FilamentWeight string `json:"filamentWeight" xml:"filamentWeight" form:"filamentWeight" query:"filamentWeight" validate:"required"`
 	Time           string `json:"time" xml:"time" form:"time" query:"time" validate:"required"`
 	UUID           string `json:"uuid" xml:"uuid" form:"uuid" query:"uuid" validate:"required"`
+	Timestamp      int64  `json:"timestamp" xml:"timestamp" form:"timestamp" query:"timestamp" validate:"required"`
 }
 
 func (p *Print) GenerateLabelZPL() string {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -55,6 +56,12 @@ func main() {
 	rmq_password := os.Getenv("RMQ_PASSWORD")
 	rmq_tag := os.Getenv("RMQ_TAG")
 	rmq_queue := os.Getenv("RMQ_QUEUE")
+	label_max_age_s := os.Getenv("LABEL_MAX_AGE")
+
+	label_max_age, err := strconv.ParseInt(label_max_age_s, 10, 64)
+	if err != nil {
+		panic(err)
+	}
 
 	redis_client := redis.NewClient(&redis.Options{
 		Addr:     rmq_url,
@@ -116,6 +123,13 @@ func main() {
 		}
 
 		fmt.Println(" [x] Acked")
+
+		timestamp := time.Unix(print.Timestamp, 0)
+
+		if timestamp.Before(time.Now().Add(-time.Second * time.Duration(label_max_age))) {
+			fmt.Println(" [x] Too old")
+			return
+		}
 
 		fmt.Println(" [x] Sending to printer")
 		temp_file, err := os.CreateTemp("", "label.zpl")
