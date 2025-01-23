@@ -2,6 +2,7 @@ package models
 
 type Print struct {
 	HumanName      string `json:"humanName" xml:"humanName" form:"humanName" query:"humanName" validate:"required"`
+	Email          string `json:"email" xml:"email" form:"email" query:"email" validate:"required"`
 	PrinterName    string `json:"printerName" xml:"printerName" form:"printerName" query:"printerName" validate:"required"`
 	FileName       string `json:"fileName" xml:"fileName" form:"fileName" query:"fileName" validate:"required"`
 	FilamentType   string `json:"filamentType" xml:"filamentType" form:"filamentType" query:"filamentType" validate:"required"`
@@ -22,45 +23,50 @@ func (p *Print) GenerateLabelZPL() string {
 	output += "\n^FO210,60^FD" + p.HumanName + "^FS"
 
 	output += "\n\n^CF0,50"
-	output += "\n^FO60,120^FDFile:^FS"
+	output += "\n^FO60,120^FDEmail:^FS"
 	output += "\n^CFD,40"
-	output += "\n^FO190,130^FD" + p.FileName + "^FS"
+	output += "\n^FO190,130^FD" + p.Email + "^FS"
 
-	output += "\n\n^FO50,200^GB1100,3,3^FS"
+	output += "\n\n^CF0,50"
+	output += "\n^FO60,190^FDFile:^FS"
+	output += "\n^CFD,40"
+	output += "\n^FO190,200^FD" + p.FileName + "^FS"
+
+	output += "\n\n^FO50,270^GB700,3,3^FS"
 
 	// ------------------------------------------------
 
 	output += "\n\n\n^FX Second Section with plastic type"
 	output += "\n^CF0,50"
-	output += "\n^FO60,250^FDFilament:^FS"
+	output += "\n^FO60,320^FDFilament:^FS"
 	output += "\n^CFD,40"
-	output += "\n^FO270,260^FD" + p.FilamentType + "^FS"
+	output += "\n^FO270,330^FD" + p.FilamentType + "^FS"
 
 	output += "\n\n^CF0,50"
-	output += "\n^FO60,320^FDType:^FS"
+	output += "\n^FO60,390^FDType:^FS"
 	output += "\n^CFD,40"
-	output += "\n^FO190,330^FD" + p.FilamentOwner + "^FS"
+	output += "\n^FO190,400^FD" + p.FilamentOwner + "^FS"
 
 	output += "\n\n^CF0,50"
-	output += "\n^FO60,390^FDWeight:^FS"
+	output += "\n^FO60,460^FDWeight:^FS"
 	output += "\n^CFD,40"
-	output += "\n^FO230,400^FD" + p.FilamentWeight + " g^FS"
+	output += "\n^FO230,470^FD" + p.FilamentWeight + " g^FS"
 
-	output += "\n\n^FO50,470^GB1100,3,3^FS"
+	output += "\n\n^FO50,540^GB1100,3,3^FS"
 
 	// ------------------------------------------------
 
 	output += "\n\n\n^FX Third Section with printer, time and QR"
 
 	output += "\n^CF0,50"
-	output += "\n^FO60,520^FDPrinter:^FS"
+	output += "\n^FO60,590^FDPrinter:^FS"
 	output += "\n^CFD,40"
-	output += "\n^FO230,530^FD" + p.PrinterName + "^FS"
+	output += "\n^FO230,600^FD" + p.PrinterName + "^FS"
 
 	output += "\n^CFD,40"
 	output += "\n^FO60,820^FD" + p.Time + "^FS"
 
-	output += "\n\n^FO900,600"
+	output += "\n\n^FO850,50"
 	output += "\n^BQN,2,8"
 	output += "\n^FDMA," + p.UUID + "^FS"
 
