@@ -164,7 +164,8 @@ func main() {
 	ws_password := os.Getenv("WS_PASSWORD")
 
 	// Initialize DB
-	db, err := gorm.Open(mysql.Open(os.Getenv("DB")), &gorm.Config{})
+	db_host := os.Getenv("MARIADB_USERNAME") + ":" + os.Getenv("MARIADB_PASSWORD") + "@tcp(" + os.Getenv("MARIADB_HOST") + ")/" + os.Getenv("MARIADB_TABLE") + "?parseTime=true"
+	db, err := gorm.Open(mysql.Open(db_host), &gorm.Config{})
 	if err != nil {
 		log.Panicln(err)
 	}
