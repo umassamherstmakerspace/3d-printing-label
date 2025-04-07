@@ -42,7 +42,7 @@ jobs:
       matrix:
         include:
           - image: label-server
-            context: src/server
+            context: .
             file: src/server/Dockerfile
             # platforms: linux/amd64
             platforms: linux/amd64,linux/arm64
