@@ -1,5 +1,26 @@
 package models
 
+import (
+	"database/sql"
+
+	"gorm.io/gorm"
+)
+
+const AddTopicName = "label-printer-add"
+
+type Message struct {
+	gorm.Model
+	Print     string       `json:"print" validate:"required"`
+	PrintedAt sql.NullTime `gorm:"index"`
+	Printed   bool         `gorm:"index"`
+}
+
+type WebsocketMessage struct {
+	ID        uint   `json:"id" validate:"required"`
+	Print     string `json:"print" validate:"required"`
+	Timestamp int64  `json:"timstamp" validate:"required"`
+}
+
 type Print struct {
 	HumanName      string `json:"humanName" xml:"humanName" form:"humanName" query:"humanName" validate:"required"`
 	Email          string `json:"email" xml:"email" form:"email" query:"email" validate:"required"`

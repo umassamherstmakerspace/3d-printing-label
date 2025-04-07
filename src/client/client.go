@@ -1,49 +1,28 @@
 package main
 
 import (
-	b64 "encoding/base64"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"strconv"
-	"syscall"
 	"time"
 
-	"github.com/go-playground/validator/v10"
-	val "github.com/go-playground/validator/v10/non-standard/validators"
-	"github.com/redis/go-redis/v9"
-
-	"github.com/adjust/rmq/v5"
+	"github.com/gorilla/websocket"
 
 	"github.com/joho/godotenv"
 
 	models "mkr.cx/3d-printing-label/src/common"
 )
 
-var validate = validator.New()
-
 type ErrorResponse struct {
 	FailedField string
 	Tag         string
 	Value       string
-}
-
-func ValidateStruct(s interface{}) []*ErrorResponse {
-	var errors []*ErrorResponse
-	err := validate.Struct(s)
-	if err != nil {
-		for _, err := range err.(validator.ValidationErrors) {
-			var element ErrorResponse
-			element.FailedField = err.StructNamespace()
-			element.Tag = err.Tag()
-			element.Value = err.Param()
-			errors = append(errors, &element)
-		}
-	}
-	return errors
 }
 
 func main() {
@@ -52,10 +31,8 @@ func main() {
 		log.Println("No .env file found")
 	}
 
-	rmq_url := os.Getenv("RMQ_URL")
-	rmq_password := os.Getenv("RMQ_PASSWORD")
-	rmq_tag := os.Getenv("RMQ_TAG")
-	rmq_queue := os.Getenv("RMQ_QUEUE")
+	ws_host := os.Getenv("WS_HOST")
+	ws_password := os.Getenv("WS_PASSWORD")
 	label_max_age_s := os.Getenv("LABEL_MAX_AGE")
 
 	label_max_age, err := strconv.ParseInt(label_max_age_s, 10, 64)
@@ -63,107 +40,113 @@ func main() {
 		panic(err)
 	}
 
-	redis_client := redis.NewClient(&redis.Options{
-		Addr:     rmq_url,
-		Password: rmq_password,
-		DB:       1,
-	})
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
 
-	rmq_con, err := rmq.OpenConnectionWithRedisClient(rmq_tag, redis_client, nil)
+	u := url.URL{Scheme: "ws", Host: ws_host, Path: "/ws"}
+	log.Printf("connecting to %s", u.String())
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 	if err != nil {
-		panic(err)
+		log.Fatal("dial:", err)
 	}
+	defer c.Close()
 
-	taskQueue, err := rmq_con.OpenQueue(rmq_queue)
-	if err != nil {
-		panic(err)
-	}
-
-	err = validate.RegisterValidation("notblank", val.NotBlank)
-
-	if err != nil {
-		panic(err)
-	}
-
-	err = taskQueue.StartConsuming(10, time.Second)
-	if err != nil {
-		panic(err)
-	}
+	done := make(chan struct{})
 
 	fmt.Println(" [*] Waiting for messages. To exit press CTRL+C")
 
-	taskQueue.AddConsumerFunc("Label Printer", func(delivery rmq.Delivery) {
-		decoded, err := b64.StdEncoding.DecodeString(delivery.Payload())
-		if err != nil {
-			fmt.Println(err)
-			delivery.Reject()
-			return
-		}
-
-		var print models.Print
-		err = json.Unmarshal(decoded, &print)
-		if err != nil {
-			fmt.Println(err)
-			delivery.Reject()
-			return
-		}
-
-		if len(ValidateStruct(print)) > 0 {
-			fmt.Println("Validation failed")
-			delivery.Reject()
-			return
-		}
-
-		fmt.Println(" [x] Received", print)
-
-		label := print.GenerateLabelZPL()
-		err = delivery.Ack()
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println(" [x] Acked")
-
-		timestamp := time.Unix(print.Timestamp, 0)
-
-		if timestamp.Before(time.Now().Add(-time.Second * time.Duration(label_max_age))) {
-			fmt.Println(" [x] Too old")
-			return
-		}
-
-		fmt.Println(" [x] Sending to printer")
-		temp_file, err := os.CreateTemp("", "label.zpl")
-		if err != nil {
-			panic(err)
-		}
-
-		_, err = temp_file.WriteString(label)
-		if err != nil {
-			panic(err)
-		}
-
-		err = temp_file.Close()
-		if err != nil {
-			panic(err)
-		}
-
-		err = exec.Command("lp", "-o", "raw", temp_file.Name()).Run()
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println(" [x] Done")
-	})
-
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT)
-	defer signal.Stop(signals)
-
-	<-signals // wait for signal
 	go func() {
-		<-signals // hard exit on second signal (in case shutdown gets stuck)
-		os.Exit(1)
+		authenticated := false
+		defer close(done)
+		for {
+			_, message, err := c.ReadMessage()
+			if err != nil {
+				log.Println("read:", err)
+				return
+			}
+			if !authenticated {
+				if bytes.Equal(message, []byte("authenticated")) {
+					log.Println("Successfully Authenticated")
+					authenticated = true
+				}
+			} else {
+				var data models.WebsocketMessage
+				err = json.Unmarshal(message, &data)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				fmt.Println(" [x] Received", data.ID, data.Timestamp)
+
+				err = c.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "%v", data.ID))
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println(" [x] Acked")
+
+				timestamp := time.Unix(data.Timestamp, 0)
+
+				if timestamp.Before(time.Now().Add(-time.Millisecond * time.Duration(label_max_age))) {
+					fmt.Println(" [x] Too old")
+					return
+				}
+
+				fmt.Println(" [x] Sending to printer")
+				temp_file, err := os.CreateTemp("", "label.zpl")
+				if err != nil {
+					panic(err)
+				}
+
+				_, err = temp_file.WriteString(data.Print)
+				if err != nil {
+					panic(err)
+				}
+
+				err = temp_file.Close()
+				if err != nil {
+					panic(err)
+				}
+
+				err = exec.Command("lp", "-o", "raw", temp_file.Name()).Run()
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println(" [x] Done")
+			}
+		}
 	}()
 
-	<-rmq_con.StopAllConsuming() // wait for all Consume() calls to finish
+	timer := time.NewTimer(time.Second)
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-timer.C:
+			err := c.WriteMessage(websocket.TextMessage, []byte(ws_password))
+			if err != nil {
+				log.Println("write:", err)
+				return
+			}
+		case <-interrupt:
+			log.Println("interrupt")
+
+			// Cleanly close the connection by sending a close message and then
+			// waiting (with timeout) for the server to close the connection.
+			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+			if err != nil {
+				log.Println("write close:", err)
+				return
+			}
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+			}
+			return
+		}
+	}
 }
